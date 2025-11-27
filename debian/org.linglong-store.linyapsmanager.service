@@ -3,7 +3,7 @@ Description=Linyaps D-Bus Manager
 After=network.target
 
 [Service]
-User=root
+User=__LINYAPS_USER__
 ExecStart=/usr/bin/linyaps-dbus-server
 Restart=on-failure
 RestartSec=3s

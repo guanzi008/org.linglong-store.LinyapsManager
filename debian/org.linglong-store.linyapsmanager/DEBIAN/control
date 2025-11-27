@@ -2,7 +2,7 @@ Package: org.linglong-store.linyapsmanager
 Version: 0.1.0-1
 Architecture: amd64
 Maintainer: Linyaps Maintainer <maintainer@example.com>
-Installed-Size: 5938
+Installed-Size: 5951
 Depends: adduser
 Section: utils
 Priority: optional

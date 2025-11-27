@@ -254,9 +254,18 @@ func (m *LinyapsManager) Ps(json bool) (string, *dbus.Error) {
 
 func (m *LinyapsManager) Install(appID, version string, force bool) (string, *dbus.Error) {
 	log.Printf("[INFO] Install appID=%s version=%s force=%v", appID, version, force)
-	ref, err := appRef(appID, version)
-	if err != nil {
-		return "", dbus.MakeFailedError(err)
+	var ref string
+	if version == "" {
+		if err := validateAppID(appID); err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = appID
+	} else {
+		r, err := appRef(appID, version)
+		if err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = r
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
@@ -276,9 +285,18 @@ func (m *LinyapsManager) Install(appID, version string, force bool) (string, *db
 
 func (m *LinyapsManager) Uninstall(appID, version string) (string, *dbus.Error) {
 	log.Printf("[INFO] Uninstall appID=%s version=%s", appID, version)
-	ref, err := appRef(appID, version)
-	if err != nil {
-		return "", dbus.MakeFailedError(err)
+	var ref string
+	if version == "" {
+		if err := validateAppID(appID); err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = appID
+	} else {
+		r, err := appRef(appID, version)
+		if err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = r
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)

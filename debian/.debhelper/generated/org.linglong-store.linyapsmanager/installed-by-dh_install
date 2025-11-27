@@ -1,1 +1,2 @@
 ./debian/dbus/org.linglong_store.LinyapsManager.conf
+./debian/polkit/10-linyaps-allow.rules

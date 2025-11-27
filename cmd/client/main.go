@@ -17,15 +17,15 @@ func printUsage() {
 	fmt.Println("  linyapsctl version [--json]")
 	fmt.Println("  linyapsctl get-version [--json]")
 	fmt.Println("  linyapsctl help-remote")
-	fmt.Println("  linyapsctl repo-show [--json]")
-	fmt.Println("  linyapsctl list [--json]")
-	fmt.Println("  linyapsctl list-upgradable [--json]")
-	fmt.Println("  linyapsctl list-upgradable-app [--json]")
+	fmt.Println("  linyapsctl repo show [--json]")
+	fmt.Println("  linyapsctl list [--json] [--upgradable] [--type=app|all]")
+	fmt.Println("  linyapsctl list-upgradable [--json]           (alias)")
+	fmt.Println("  linyapsctl list-upgradable-app [--json]       (alias)")
 	fmt.Println("  linyapsctl search <keyword> [--json]")
 	fmt.Println("  linyapsctl info <appId>")
 	fmt.Println("  linyapsctl ps [--json]")
-	fmt.Println("  linyapsctl install <appId>/<version> [--force]")
-	fmt.Println("  linyapsctl uninstall <appId>/<version>")
+	fmt.Println("  linyapsctl install <appId>[/<version>] [--force] [-y]")
+	fmt.Println("  linyapsctl uninstall <appId>[/<version>]")
 	fmt.Println("  linyapsctl run <appId>[/<version>]")
 	fmt.Println("  linyapsctl kill <appId>")
 	fmt.Println("  linyapsctl prune")
@@ -49,30 +49,37 @@ func main() {
 
 	obj := conn.Object(dbusconsts.BusName, dbus.ObjectPath(dbusconsts.ObjectPath))
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	globalJSON, stripped := parseGlobalJSON(os.Args[1:])
+	if len(stripped) == 0 {
+		printUsage()
+		os.Exit(1)
+	}
+	cmd := stripped[0]
+	args := stripped[1:]
 
 	switch cmd {
 	case "version", "--version":
-		handleGetVersion(obj, args)
+		handleGetVersion(obj, args, globalJSON)
 	case "get-version":
-		handleGetVersion(obj, args)
+		handleGetVersion(obj, args, globalJSON)
 	case "help-remote":
 		handleHelpRemote(obj)
+	case "repo":
+		handleRepo(obj, args, globalJSON)
 	case "repo-show":
-		handleRepoShow(obj, args)
+		handleRepo(obj, args, globalJSON)
 	case "list":
-		handleListAll(obj, args)
+		handleList(obj, args, globalJSON)
 	case "list-upgradable":
-		handleListUpgradable(obj, args)
+		handleList(obj, append([]string{"--upgradable"}, args...), globalJSON)
 	case "list-upgradable-app":
-		handleListUpgradableApp(obj, args)
+		handleList(obj, append([]string{"--upgradable", "--type=app"}, args...), globalJSON)
 	case "search":
-		handleSearch(obj, args)
+		handleSearch(obj, args, globalJSON)
 	case "info":
 		handleInfo(obj, args)
 	case "ps":
-		handlePs(obj, args)
+		handlePs(obj, args, globalJSON)
 	case "install":
 		handleInstall(obj, args)
 	case "uninstall":
@@ -106,6 +113,20 @@ func callString(obj dbus.BusObject, method string, params ...interface{}) (strin
 	return out, nil
 }
 
+// parseGlobalJSON removes any --json flags (wherever they appear) and returns the flag and remaining args.
+func parseGlobalJSON(args []string) (bool, []string) {
+	json := false
+	var rest []string
+	for _, a := range args {
+		if a == "--json" {
+			json = true
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return json, rest
+}
+
 func parseJSONFlag(args []string) (bool, []string) {
 	json := false
 	var rest []string
@@ -125,6 +146,11 @@ func parseForceFlag(args []string) (bool, []string) {
 	for _, a := range args {
 		if a == "--force" {
 			force = true
+			continue
+		}
+		if a == "-y" || a == "--yes" {
+			// ignore confirmation flags; server always runs with -y
+			continue
 		} else {
 			rest = append(rest, a)
 		}
@@ -152,8 +178,9 @@ func parseAppRefOptional(ref string) (string, string, error) {
 	return ref, "", nil
 }
 
-func handleGetVersion(obj dbus.BusObject, args []string) {
+func handleGetVersion(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	jsonFlag, _ := parseJSONFlag(args)
+	jsonFlag = jsonFlag || jsonGlobal
 	out, err := callString(obj, "GetVersion", jsonFlag)
 	if err != nil {
 		log.Fatalf("GetVersion failed: %v", err)
@@ -161,8 +188,13 @@ func handleGetVersion(obj dbus.BusObject, args []string) {
 	fmt.Print(out)
 }
 
-func handleRepoShow(obj dbus.BusObject, args []string) {
-	jsonFlag, _ := parseJSONFlag(args)
+func handleRepo(obj dbus.BusObject, args []string, jsonGlobal bool) {
+	jsonFlag, rest := parseJSONFlag(args)
+	jsonFlag = jsonFlag || jsonGlobal
+	if len(rest) > 0 && !(len(rest) == 1 && rest[0] == "show") {
+		fmt.Println("Usage: linyapsctl repo show [--json]")
+		os.Exit(1)
+	}
 	out, err := callString(obj, "RepoShow", jsonFlag)
 	if err != nil {
 		log.Fatalf("RepoShow failed: %v", err)
@@ -187,6 +219,47 @@ func handleListAll(obj dbus.BusObject, args []string) {
 	fmt.Print(out)
 }
 
+func handleList(obj dbus.BusObject, args []string, jsonGlobal bool) {
+	jsonFlag, rest := parseJSONFlag(args)
+	jsonFlag = jsonFlag || jsonGlobal
+	upgradable := false
+	typ := ""
+	for _, a := range rest {
+		switch a {
+		case "--upgradable":
+			upgradable = true
+		case "--type=app":
+			typ = "app"
+		case "--type=all":
+			typ = "all"
+		default:
+			fmt.Println("Usage: linyapsctl list [--json] [--upgradable] [--type=app|all]")
+			os.Exit(1)
+		}
+	}
+
+	switch {
+	case upgradable && typ == "app":
+		out, err := callString(obj, "ListUpgradableApp", jsonFlag)
+		if err != nil {
+			log.Fatalf("ListUpgradableApp failed: %v", err)
+		}
+		fmt.Print(out)
+	case upgradable:
+		out, err := callString(obj, "ListUpgradable", jsonFlag)
+		if err != nil {
+			log.Fatalf("ListUpgradable failed: %v", err)
+		}
+		fmt.Print(out)
+	default:
+		out, err := callString(obj, "ListAll", jsonFlag)
+		if err != nil {
+			log.Fatalf("List failed: %v", err)
+		}
+		fmt.Print(out)
+	}
+}
+
 func handleListUpgradable(obj dbus.BusObject, args []string) {
 	jsonFlag, _ := parseJSONFlag(args)
 	out, err := callString(obj, "ListUpgradable", jsonFlag)
@@ -205,12 +278,13 @@ func handleListUpgradableApp(obj dbus.BusObject, args []string) {
 	fmt.Print(out)
 }
 
-func handleSearch(obj dbus.BusObject, args []string) {
+func handleSearch(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	if len(args) == 0 {
 		fmt.Println("Usage: linyapsctl search <keyword> [--json]")
 		os.Exit(1)
 	}
 	jsonFlag, rest := parseJSONFlag(args)
+	jsonFlag = jsonFlag || jsonGlobal
 	if len(rest) == 0 {
 		fmt.Println("Usage: linyapsctl search <keyword> [--json]")
 		os.Exit(1)
@@ -237,8 +311,9 @@ func handleInfo(obj dbus.BusObject, args []string) {
 	fmt.Print(out)
 }
 
-func handlePs(obj dbus.BusObject, args []string) {
+func handlePs(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	jsonFlag, _ := parseJSONFlag(args)
+	jsonFlag = jsonFlag || jsonGlobal
 	out, err := callString(obj, "Ps", jsonFlag)
 	if err != nil {
 		log.Fatalf("Ps failed: %v", err)
@@ -248,15 +323,15 @@ func handlePs(obj dbus.BusObject, args []string) {
 
 func handleInstall(obj dbus.BusObject, args []string) {
 	if len(args) < 1 {
-		fmt.Println("Usage: linyapsctl install <appId>/<version> [--force]")
+		fmt.Println("Usage: linyapsctl install <appId>[/<version>] [--force]")
 		os.Exit(1)
 	}
 	force, rest := parseForceFlag(args)
 	if len(rest) != 1 {
-		fmt.Println("Usage: linyapsctl install <appId>/<version> [--force]")
+		fmt.Println("Usage: linyapsctl install <appId>[/<version>] [--force]")
 		os.Exit(1)
 	}
-	appID, version, err := parseAppRef(rest[0])
+	appID, version, err := parseAppRefOptional(rest[0])
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -270,10 +345,10 @@ func handleInstall(obj dbus.BusObject, args []string) {
 
 func handleUninstall(obj dbus.BusObject, args []string) {
 	if len(args) != 1 {
-		fmt.Println("Usage: linyapsctl uninstall <appId>/<version>")
+		fmt.Println("Usage: linyapsctl uninstall <appId>[/<version>]")
 		os.Exit(1)
 	}
-	appID, version, err := parseAppRef(args[0])
+	appID, version, err := parseAppRefOptional(args[0])
 	if err != nil {
 		log.Fatal(err)
 	}

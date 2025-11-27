@@ -21,6 +21,11 @@ configure)
 	fi
 
 	if [ -n "$TARGET_USER" ] && id -u "$TARGET_USER" >/dev/null 2>&1; then
+		# Patch service file placeholder if present
+		if [ -f /etc/systemd/system/org.linglong-store.linyapsmanager.service ]; then
+			sed -i "s|__LINYAPS_USER__|$TARGET_USER|g" /etc/systemd/system/org.linglong-store.linyapsmanager.service || true
+		fi
+
 		if ! id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
 			adduser "$TARGET_USER" "$GROUP" >/dev/null 2>&1 || true
 		fi
