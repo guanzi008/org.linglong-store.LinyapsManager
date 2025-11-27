@@ -1,0 +1,48 @@
+#!/bin/sh
+set -e
+
+GROUP="linglong-store"
+
+case "$1" in
+configure)
+	# Ensure group exists
+	if ! getent group "$GROUP" >/dev/null 2>&1; then
+		addgroup --system "$GROUP" || true
+	fi
+
+	# Pick a non-root user to add to the group: prefer SUDO_USER, then LOGNAME, then uid 1000.
+	TARGET_USER=""
+	if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+		TARGET_USER="$SUDO_USER"
+	elif [ -n "$LOGNAME" ] && [ "$LOGNAME" != "root" ]; then
+		TARGET_USER="$LOGNAME"
+	elif id -nu 1000 >/dev/null 2>&1; then
+		TARGET_USER="$(id -nu 1000)"
+	fi
+
+	if [ -n "$TARGET_USER" ] && id -u "$TARGET_USER" >/dev/null 2>&1; then
+		if ! id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
+			adduser "$TARGET_USER" "$GROUP" >/dev/null 2>&1 || true
+		fi
+	fi
+
+	# Create a systemd drop-in to run the service as the detected user (so ll-cli sees per-user state)
+	if [ -n "$TARGET_USER" ]; then
+		OVERRIDE_DIR="/etc/systemd/system/org.linglong-store.linyapsmanager.service.d"
+		OVERRIDE_FILE="$OVERRIDE_DIR/override.conf"
+		mkdir -p "$OVERRIDE_DIR"
+		cat > "$OVERRIDE_FILE" <<-EOF
+		[Service]
+		User=$TARGET_USER
+		Group=$GROUP
+		EOF
+	fi
+
+	# Reload systemd units to pick up drop-in; do not start automatically (leave to admin)
+	if command -v systemctl >/dev/null 2>&1; then
+		systemctl daemon-reload || true
+	fi
+	;;
+esac
+
+exit 0

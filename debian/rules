@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+
+export GO111MODULE=on
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	dh_auto_build
+	mkdir -p build
+	go build -trimpath -o build/linyaps-dbus-server ./cmd/server
+	go build -trimpath -o build/linyapsctl ./cmd/client
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf build
+
+override_dh_auto_install:
+	dh_auto_install
+	# Ensure binaries exist even if build dir was cleaned while using -nc
+	if [ ! -f build/linyaps-dbus-server ] || [ ! -f build/linyapsctl ]; then \
+		$(MAKE) -f debian/rules override_dh_auto_build; \
+	fi
+	install -D -m0755 build/linyaps-dbus-server $(CURDIR)/debian/org.linglong-store.linyapsmanager/usr/bin/linyaps-dbus-server
+	install -D -m0755 build/linyapsctl $(CURDIR)/debian/org.linglong-store.linyapsmanager/usr/bin/linyapsctl
+
+override_dh_dwz:
+	# Skip dwz because Go binaries embed compressed debug sections that dwz cannot handle
+	:

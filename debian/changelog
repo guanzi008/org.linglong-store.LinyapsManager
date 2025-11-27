@@ -1,0 +1,5 @@
+org.linglong-store.linyapsmanager (0.1.0-1) unstable; urgency=medium
+
+  * Initial release of the ll-cli D-Bus service and client wrapper.
+
+ -- Linyaps Maintainer <maintainer@example.com>  Tue, 25 Nov 2025 20:58:53 +0800

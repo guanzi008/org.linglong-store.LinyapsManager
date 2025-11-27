@@ -1,0 +1,14 @@
+Source: org.linglong-store.linyapsmanager
+Section: utils
+Priority: optional
+Maintainer: Linyaps Maintainer <maintainer@example.com>
+Build-Depends: debhelper-compat (= 13), golang-any
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: org.linglong-store.linyapsmanager
+Architecture: any
+Depends: ${misc:Depends}, adduser
+Description: D-Bus manager for ll-cli operations
+ A Go-based D-Bus service that wraps ll-cli with input validation,
+ timeouts, and a thin client (linyapsctl) for testing and scripting.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Linyaps D-Bus Manager
+After=network.target
+
+[Service]
+User=root
+ExecStart=/usr/bin/linyaps-dbus-server
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
