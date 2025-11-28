@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -68,7 +67,7 @@ func runLinyaps(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, linyapsCmd, args...)
 	// Inherit environment and ensure dbus addresses follow our proxy preference.
 	env := os.Environ()
-	env = append(env, sessionEnvOnce()...)
+	env = append(env, sessionEnv()...)
 	env = append(env, loadUserEnv()...)
 	if p := os.Getenv("LINYAPS_DBUS_ADDRESS"); p != "" {
 		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS="+p)
@@ -456,18 +455,11 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-var (
-	onceSessionEnv sync.Once
-	cachedSession  []string
-)
-
-// sessionEnvOnce grabs session-like env (DISPLAY/DBUS_SESSION/etc.) from an existing
-// user process, so ll-cli behaves like launched from user session.
-func sessionEnvOnce() []string {
-	onceSessionEnv.Do(func() {
-		cachedSession = envgrab.CaptureSessionEnv()
-	})
-	return cachedSession
+// sessionEnv grabs session-like env (DISPLAY/DBUS_SESSION/etc.) from an existing
+// user process each time we spawn ll-cli, so we can pick up a session that started
+// after this service launched. Best-effort; returns nil if nothing found.
+func sessionEnv() []string {
+	return envgrab.CaptureSessionEnv()
 }
 
 // loadUserEnv reads an optional env file to inject user session vars (e.g., DISPLAY).
