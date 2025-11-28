@@ -1,0 +1,15 @@
+# Build artifacts
+/build/
+
+# IDE
+/.idea/
+
+# Debian packaging outputs
+/debian/.debhelper/
+/debian/files
+/debian/org.linglong-store.linyapsmanager/
+/debian/org.linglong-store.linyapsmanager.postinst.debhelper
+/debian/org.linglong-store.linyapsmanager.substvars
+*.deb
+*.buildinfo
+*.changes

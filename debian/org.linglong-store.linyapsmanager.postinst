@@ -21,31 +21,18 @@ configure)
 	fi
 
 	if [ -n "$TARGET_USER" ] && id -u "$TARGET_USER" >/dev/null 2>&1; then
-		# Patch service file placeholder if present
-		if [ -f /etc/systemd/system/org.linglong-store.linyapsmanager.service ]; then
-			sed -i "s|__LINYAPS_USER__|$TARGET_USER|g" /etc/systemd/system/org.linglong-store.linyapsmanager.service || true
-		fi
-
 		if ! id -nG "$TARGET_USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
 			adduser "$TARGET_USER" "$GROUP" >/dev/null 2>&1 || true
 		fi
 	fi
 
-	# Create a systemd drop-in to run the service as the detected user (so ll-cli sees per-user state)
-	if [ -n "$TARGET_USER" ]; then
-		OVERRIDE_DIR="/etc/systemd/system/org.linglong-store.linyapsmanager.service.d"
-		OVERRIDE_FILE="$OVERRIDE_DIR/override.conf"
-		mkdir -p "$OVERRIDE_DIR"
-		cat > "$OVERRIDE_FILE" <<-EOF
-		[Service]
-		User=$TARGET_USER
-		Group=$GROUP
-		EOF
-	fi
-
-	# Reload systemd units to pick up drop-in; do not start automatically (leave to admin)
-	if command -v systemctl >/dev/null 2>&1; then
-		systemctl daemon-reload || true
+	# Reload and enable the user unit for the detected user if their user manager is available
+	if command -v systemctl >/dev/null 2>&1 && [ -n "$TARGET_USER" ]; then
+		USER_RUNTIME="/run/user/$(id -u "$TARGET_USER")"
+		if [ -d "$USER_RUNTIME" ]; then
+			runuser -u "$TARGET_USER" -- systemctl --user daemon-reload || true
+			runuser -u "$TARGET_USER" -- systemctl --user enable --now org.linglong-store.linyapsmanager.service || true
+		fi
 	fi
 	;;
 esac

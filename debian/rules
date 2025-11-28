@@ -24,6 +24,10 @@ override_dh_auto_install:
 	install -D -m0755 build/linyaps-dbus-server $(CURDIR)/debian/org.linglong-store.linyapsmanager/usr/bin/linyaps-dbus-server
 	install -D -m0755 build/linyapsctl $(CURDIR)/debian/org.linglong-store.linyapsmanager/usr/bin/linyapsctl
 
+override_dh_installsystemd:
+	# On older debhelper, --user is not supported; placing units under /usr/lib/systemd/user/
+	# is enough for dh_installsystemd to treat them as user units.
+
 override_dh_dwz:
 	# Skip dwz because Go binaries embed compressed debug sections that dwz cannot handle
 	:
