@@ -33,6 +33,22 @@ const (
 )
 
 var (
+	englishLocaleEnv = []struct {
+		key   string
+		value string
+	}{
+		{"LC_ALL", "C.UTF-8"},
+		{"LANG", "C.UTF-8"},
+		{"LANGUAGE", "en_US"},
+		{"LC_MESSAGES", "C.UTF-8"},
+	}
+	englishLocaleKeys = func() map[string]struct{} {
+		keys := make(map[string]struct{}, len(englishLocaleEnv))
+		for _, kv := range englishLocaleEnv {
+			keys[kv.key] = struct{}{}
+		}
+		return keys
+	}()
 	appIDPattern       = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 	versionPattern     = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 	containerIDPattern = regexp.MustCompile(`^[a-fA-F0-9]{6,64}$`)
@@ -84,7 +100,8 @@ func buildLinyapsEnv() []string {
 	} else if p := proxy.DefaultSessionProxyPath(); fileExists(p) {
 		env = append(env, "DBUS_SESSION_BUS_ADDRESS=unix:path="+p)
 	}
-	return env
+	// Enforce English locale so ll-cli output remains stable for parsing.
+	return enforceEnglishLocale(env)
 }
 
 func runLinyaps(ctx context.Context, args ...string) (string, error) {
@@ -551,4 +568,24 @@ func loadUserEnv() []string {
 		env = append(env, l)
 	}
 	return env
+}
+
+// enforceEnglishLocale removes locale-related keys from env and appends fixed English
+// values so ll-cli outputs are deterministic regardless of host locale.
+func enforceEnglishLocale(env []string) []string {
+	filtered := make([]string, 0, len(env)+len(englishLocaleEnv))
+	for _, kv := range env {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if _, skip := englishLocaleKeys[parts[0]]; skip {
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+	for _, kv := range englishLocaleEnv {
+		filtered = append(filtered, kv.key+"="+kv.value)
+	}
+	return filtered
 }
