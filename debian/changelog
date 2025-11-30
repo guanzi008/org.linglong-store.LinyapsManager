@@ -1,4 +1,4 @@
-org.linglong-store.linyapsmanager (0.1.0-1) unstable; urgency=medium
+org.linglong-store.linyapsmanager (0.1.0) unstable; urgency=medium
 
   * Initial release of the ll-cli D-Bus service and client wrapper.
 
