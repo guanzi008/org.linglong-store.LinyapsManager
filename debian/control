@@ -8,7 +8,7 @@ Rules-Requires-Root: no
 
 Package: org.linglong-store.linyapsmanager
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, adduser
+Depends: ${misc:Depends}, ${shlibs:Depends}, adduser, linglong-bin
 Description: D-Bus manager for ll-cli operations
  A Go-based D-Bus service that wraps ll-cli with input validation,
  timeouts, and a thin client (linyapsctl) for testing and scripting.

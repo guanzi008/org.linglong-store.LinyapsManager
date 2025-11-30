@@ -1,0 +1,23 @@
+org.linglong-store.linyapsmanager depends on linglong-bin. That package is provided by the linglong OBS repositories and you must enable the matching repository for your distribution before installing this .deb.
+
+Use the release repo unless you explicitly want the latest builds. Replace "release" with "latest" if you need the preview channel.
+
+Examples:
+Deepin 25:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/Deepin_25/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+Deepin 23:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/Deepin_23/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+Ubuntu 24.04:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/xUbuntu_24.04/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+Debian 12:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/Debian_12/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+Debian 13:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/Debian_13/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+UOS 1070:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/uos_1070/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+openkylin 2.0:
+  echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/openkylin_2.0/ ./" | sudo tee /etc/apt/sources.list.d/linglong.list
+
+Then run:
+  sudo apt update
+  sudo apt install linglong-bin
