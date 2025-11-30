@@ -1,11 +1,13 @@
 package dbusutil
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -23,12 +25,14 @@ func DefaultProxyPath() string {
 // If addr is empty, it falls back to DBUS_SYSTEM_BUS_ADDRESS and finally the
 // default proxy path (if present) and finally the default system bus.
 func Connect(addr string) (*dbus.Conn, error) {
+	triedProxy := false
 	if addr == "" {
 		addr = os.Getenv("DBUS_SYSTEM_BUS_ADDRESS")
 	}
 	if addr == "" {
 		if p := DefaultProxyPath(); fileExists(p) {
 			addr = "unix:path=" + p
+			triedProxy = true
 		}
 	}
 	if addr != "" && !strings.HasPrefix(addr, "unix:path=") && !strings.HasPrefix(addr, "tcp:") {
@@ -38,22 +42,37 @@ func Connect(addr string) (*dbus.Conn, error) {
 		}
 	}
 	if addr != "" {
-		conn, err := dbus.Dial(addr)
+		conn, err := dialAndAuth(addr)
 		if err != nil {
-			return nil, fmt.Errorf("dial bus %q: %w", addr, err)
-		}
-		// Perform auth and hello sequence because Dial skips it.
-		if err := conn.Auth(nil); err != nil {
-			conn.Close()
-			return nil, fmt.Errorf("auth bus %q: %w", addr, err)
-		}
-		if err := conn.Hello(); err != nil {
-			conn.Close()
-			return nil, fmt.Errorf("hello bus %q: %w", addr, err)
+			// If we tried to reuse a stale proxy socket, drop it and fall back to the system bus.
+			if triedProxy && errors.Is(err, syscall.ECONNREFUSED) {
+				if p := DefaultProxyPath(); p != "" {
+					_ = os.Remove(p)
+				}
+				return dbus.ConnectSystemBus()
+			}
+			return nil, err
 		}
 		return conn, nil
 	}
 	return dbus.ConnectSystemBus()
+}
+
+func dialAndAuth(addr string) (*dbus.Conn, error) {
+	conn, err := dbus.Dial(addr)
+	if err != nil {
+		return nil, fmt.Errorf("dial bus %q: %w", addr, err)
+	}
+	// Perform auth and hello sequence because Dial skips it.
+	if err := conn.Auth(nil); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("auth bus %q: %w", addr, err)
+	}
+	if err := conn.Hello(); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("hello bus %q: %w", addr, err)
+	}
+	return conn, nil
 }
 
 func fileExists(p string) bool {

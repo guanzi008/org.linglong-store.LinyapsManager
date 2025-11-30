@@ -10,6 +10,7 @@ import (
 
 	"linyapsmanager/internal/dbusconsts"
 	"linyapsmanager/internal/dbusutil"
+	"linyapsmanager/internal/streaming"
 )
 
 func printUsage() {
@@ -81,7 +82,7 @@ func main() {
 	case "ps":
 		handlePs(obj, args, globalJSON)
 	case "install":
-		handleInstall(obj, args)
+		handleInstall(conn, obj, args)
 	case "uninstall":
 		handleUninstall(obj, args)
 	case "run":
@@ -92,6 +93,8 @@ func main() {
 		handlePrune(obj, args)
 	case "exec":
 		handleExec(obj, args)
+	case "test":
+		testStream(conn, obj)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -113,7 +116,47 @@ func callString(obj dbus.BusObject, method string, params ...interface{}) (strin
 	return out, nil
 }
 
-// parseGlobalJSON removes any --json flags (wherever they appear) and returns the flag and remaining args.
+func testStream(conn *dbus.Conn, obj dbus.BusObject) {
+	err := callStringStreaming(conn, obj, "TestStream")
+	if err != nil {
+		log.Fatalf("TestStream failed: %v", err)
+	}
+}
+
+// callStringStreaming calls a streaming D-Bus method and waits for output signals.
+func callStringStreaming(conn *dbus.Conn, obj dbus.BusObject, method string, params ...interface{}) error {
+	receiver, err := streaming.NewReceiver(conn)
+	if err != nil {
+		return fmt.Errorf("failed to create signal receiver: %w", err)
+	}
+	defer receiver.Stop()
+
+	var operationID string
+	call := obj.Call(dbusconsts.Interface+"."+method, 0, params...)
+	if call.Err != nil {
+		return call.Err
+	}
+	if err := call.Store(&operationID); err != nil {
+		return fmt.Errorf("failed to get operation ID: %w", err)
+	}
+
+	exitCode, errorMsg := receiver.WaitForOperation(operationID, func(data string, isStderr bool) {
+		if isStderr {
+			fmt.Fprint(os.Stderr, data)
+		} else {
+			fmt.Print(data)
+		}
+	})
+
+	if exitCode != 0 {
+		if errorMsg != "" {
+			return fmt.Errorf("command failed with exit code %d: %s", exitCode, errorMsg)
+		}
+		return fmt.Errorf("command failed with exit code %d", exitCode)
+	}
+	return nil
+}
+
 func parseGlobalJSON(args []string) (bool, []string) {
 	json := false
 	var rest []string
@@ -321,7 +364,7 @@ func handlePs(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	fmt.Print(out)
 }
 
-func handleInstall(obj dbus.BusObject, args []string) {
+func handleInstall(conn *dbus.Conn, obj dbus.BusObject, args []string) {
 	if len(args) < 1 {
 		fmt.Println("Usage: linyapsctl install <appId>[/<version>] [--force]")
 		os.Exit(1)
@@ -336,11 +379,9 @@ func handleInstall(obj dbus.BusObject, args []string) {
 		log.Fatal(err)
 	}
 
-	out, err := callString(obj, "Install", appID, version, force)
-	if err != nil {
+	if err := callStringStreaming(conn, obj, "InstallStream", appID, version, force); err != nil {
 		log.Fatalf("Install failed: %v", err)
 	}
-	fmt.Print(out)
 }
 
 func handleUninstall(obj dbus.BusObject, args []string) {

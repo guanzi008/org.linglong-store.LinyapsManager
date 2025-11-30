@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"linyapsmanager/internal/dbusutil"
 	"linyapsmanager/internal/envgrab"
 	"linyapsmanager/internal/proxy"
+	"linyapsmanager/internal/streaming"
 )
 
 const (
@@ -63,9 +65,8 @@ func appRef(appID, version string) (string, error) {
 	return fmt.Sprintf("%s/%s", appID, version), nil
 }
 
-func runLinyaps(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, linyapsCmd, args...)
-	// Inherit environment and ensure dbus addresses follow our proxy preference.
+// buildLinyapsEnv builds the environment for running ll-cli commands.
+func buildLinyapsEnv() []string {
 	env := os.Environ()
 	env = append(env, sessionEnv()...)
 	env = append(env, loadUserEnv()...)
@@ -83,7 +84,12 @@ func runLinyaps(ctx context.Context, args ...string) (string, error) {
 	} else if p := proxy.DefaultSessionProxyPath(); fileExists(p) {
 		env = append(env, "DBUS_SESSION_BUS_ADDRESS=unix:path="+p)
 	}
-	cmd.Env = env
+	return env
+}
+
+func runLinyaps(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, linyapsCmd, args...)
+	cmd.Env = buildLinyapsEnv()
 
 	out, err := cmd.CombinedOutput()
 	output := string(out)
@@ -93,7 +99,9 @@ func runLinyaps(ctx context.Context, args ...string) (string, error) {
 	return output, nil
 }
 
-type LinyapsManager struct{}
+type LinyapsManager struct {
+	emitter *streaming.Emitter
+}
 
 // Help -> ll-cli --help
 func (m *LinyapsManager) Help() (string, *dbus.Error) {
@@ -282,6 +290,67 @@ func (m *LinyapsManager) Install(appID, version string, force bool) (string, *db
 	return out, nil
 }
 
+// InstallStream starts an install operation and streams output via D-Bus signals.
+// Returns an operationID; subscribe to Output and Complete signals to receive data.
+func (m *LinyapsManager) InstallStream(appID, version string, force bool) (string, *dbus.Error) {
+	log.Printf("[INFO] InstallStream appID=%s version=%s force=%v", appID, version, force)
+	var ref string
+	if version == "" {
+		if err := validateAppID(appID); err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = appID
+	} else {
+		r, err := appRef(appID, version)
+		if err != nil {
+			return "", dbus.MakeFailedError(err)
+		}
+		ref = r
+	}
+
+	args := []string{"install", ref, "-y"}
+	if force {
+		args = append(args, "--force")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	opID, err := streaming.RunCommandStreamingPTY(ctx, m.emitter, buildLinyapsEnv(), linyapsCmd, args...)
+	if err != nil {
+		cancel()
+		return "", dbus.MakeFailedError(err)
+	}
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+	return opID, nil
+}
+
+// 验证流式内容传输。验证通过。
+func (m *LinyapsManager) TestStream() (string, *dbus.Error) {
+	operationID := streaming.GenerateOperationID()
+
+	// Stream asynchronously so the D-Bus call returns immediately and the client can
+	// consume Output signals while they arrive.
+	go func(operationID string) {
+		log.Printf("[INFO] 测试流式输出")
+		emitter := m.emitter
+		for i := 0; i < 30; i++ {
+			log.Printf("[INFO] 流式输出第 %d 行", i)
+			time.Sleep(1 * time.Second) // 模拟输出延迟
+			if err := emitter.EmitOutput(operationID, strconv.Itoa(i)+"\n", false); err != nil {
+				fmt.Fprintf(os.Stderr, "[streaming] failed to emit output: %v\n", err)
+			}
+		}
+		if err := emitter.EmitComplete(operationID, 0, ""); err != nil {
+			fmt.Fprintf(os.Stderr, "[streaming] failed to emit complete: %v\n", err)
+		}
+		log.Printf("[INFO] 流式输出完成")
+	}(operationID)
+
+	return operationID, nil
+}
+
 func (m *LinyapsManager) Uninstall(appID, version string) (string, *dbus.Error) {
 	log.Printf("[INFO] Uninstall appID=%s version=%s", appID, version)
 	var ref string
@@ -406,7 +475,8 @@ func main() {
 		log.Fatalf("name %s already taken", dbusconsts.BusName)
 	}
 
-	mgr := &LinyapsManager{}
+	emitter := streaming.NewEmitter(conn)
+	mgr := &LinyapsManager{emitter: emitter}
 	conn.Export(mgr, dbus.ObjectPath(dbusconsts.ObjectPath), dbusconsts.Interface)
 
 	log.Printf("[INFO] D-Bus service started: name=%s path=%s iface=%s",

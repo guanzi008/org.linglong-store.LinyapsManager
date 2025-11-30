@@ -13,3 +13,5 @@
 *.deb
 *.buildinfo
 *.changes
+client
+server

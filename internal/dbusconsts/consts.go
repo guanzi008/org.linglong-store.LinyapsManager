@@ -7,4 +7,8 @@ const (
 	BusName    = "org.linglong_store.LinyapsManager"
 	ObjectPath = "/org/linglong_store/LinyapsManager"
 	Interface  = "org.linglong_store.LinyapsManager"
+
+	// Signal names for streaming output
+	SignalOutput   = "Output"   // Emitted for each chunk of output (operationID, data string, isStderr bool)
+	SignalComplete = "Complete" // Emitted when operation completes (operationID, exitCode int, errorMsg string)
 )
