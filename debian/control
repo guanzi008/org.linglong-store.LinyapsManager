@@ -1,7 +1,7 @@
 Source: org.linglong-store.linyapsmanager
 Section: utils
 Priority: optional
-Maintainer: Linyaps Maintainer <maintainer@example.com>
+Maintainer: Linyaps Maintainer <admin@odata.cc>
 Build-Depends: debhelper-compat (= 13), golang-any
 Standards-Version: 4.7.0
 Rules-Requires-Root: no

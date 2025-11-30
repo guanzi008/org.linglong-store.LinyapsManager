@@ -105,7 +105,8 @@ func callString(obj dbus.BusObject, method string, params ...interface{}) (strin
 	var out string
 	call := obj.Call(dbusconsts.Interface+"."+method, 0, params...)
 	if call.Err != nil {
-		return "", call.Err
+		_ = call.Store(&out)
+		return out, call.Err
 	}
 	if err := call.Store(&out); err != nil {
 		return "", err
@@ -183,6 +184,7 @@ func handleGetVersion(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	jsonFlag = jsonFlag || jsonGlobal
 	out, err := callString(obj, "GetVersion", jsonFlag)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("GetVersion failed: %v", err)
 	}
 	fmt.Print(out)
@@ -197,6 +199,7 @@ func handleRepo(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	}
 	out, err := callString(obj, "RepoShow", jsonFlag)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("RepoShow failed: %v", err)
 	}
 	fmt.Print(out)
@@ -242,18 +245,21 @@ func handleList(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	case upgradable && typ == "app":
 		out, err := callString(obj, "ListUpgradableApp", jsonFlag)
 		if err != nil {
+			fmt.Fprint(os.Stderr, out)
 			log.Fatalf("ListUpgradableApp failed: %v", err)
 		}
 		fmt.Print(out)
 	case upgradable:
 		out, err := callString(obj, "ListUpgradable", jsonFlag)
 		if err != nil {
+			fmt.Fprint(os.Stderr, out)
 			log.Fatalf("ListUpgradable failed: %v", err)
 		}
 		fmt.Print(out)
 	default:
 		out, err := callString(obj, "ListAll", jsonFlag)
 		if err != nil {
+			fmt.Fprint(os.Stderr, out)
 			log.Fatalf("List failed: %v", err)
 		}
 		fmt.Print(out)
@@ -293,6 +299,7 @@ func handleSearch(obj dbus.BusObject, args []string, jsonGlobal bool) {
 
 	out, err := callString(obj, "Search", keyword, jsonFlag)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Search failed: %v", err)
 	}
 	fmt.Print(out)
@@ -306,6 +313,7 @@ func handleInfo(obj dbus.BusObject, args []string) {
 	appID := args[0]
 	out, err := callString(obj, "Info", appID)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Info failed: %v", err)
 	}
 	fmt.Print(out)
@@ -316,6 +324,7 @@ func handlePs(obj dbus.BusObject, args []string, jsonGlobal bool) {
 	jsonFlag = jsonFlag || jsonGlobal
 	out, err := callString(obj, "Ps", jsonFlag)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Ps failed: %v", err)
 	}
 	fmt.Print(out)
@@ -338,6 +347,7 @@ func handleInstall(obj dbus.BusObject, args []string) {
 
 	out, err := callString(obj, "Install", appID, version, force)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Install failed: %v", err)
 	}
 	fmt.Print(out)
@@ -355,6 +365,7 @@ func handleUninstall(obj dbus.BusObject, args []string) {
 
 	out, err := callString(obj, "Uninstall", appID, version)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Uninstall failed: %v", err)
 	}
 	fmt.Print(out)
@@ -372,6 +383,7 @@ func handleRun(obj dbus.BusObject, args []string) {
 
 	out, err := callString(obj, "Run", appID, version)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Run failed: %v", err)
 	}
 	fmt.Print(out)
@@ -386,6 +398,7 @@ func handleKill(obj dbus.BusObject, args []string) {
 
 	out, err := callString(obj, "Kill", appID)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Kill failed: %v", err)
 	}
 	fmt.Print(out)
@@ -398,6 +411,7 @@ func handlePrune(obj dbus.BusObject, args []string) {
 	}
 	out, err := callString(obj, "Prune")
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Prune failed: %v", err)
 	}
 	fmt.Print(out)
@@ -423,6 +437,7 @@ func handleExec(obj dbus.BusObject, args []string) {
 	cmdArgs := args[sep+1:]
 	out, err := callString(obj, "Exec", container, cmdArgs)
 	if err != nil {
+		fmt.Fprint(os.Stderr, out)
 		log.Fatalf("Exec failed: %v", err)
 	}
 	fmt.Print(out)

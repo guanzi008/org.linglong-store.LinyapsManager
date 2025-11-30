@@ -14,9 +14,9 @@ const (
 )
 
 // SpawnSessionProxy starts xdg-dbus-proxy for the user's session bus and writes
-// a proxy socket under /run/user/<uid>/linglong/linyaps-session-proxy.sock.
-// It returns the proxy path and a cleanup func. If xdg-dbus-proxy is absent or
-// session bus address is unavailable, it returns empty path and nil cleanup.
+// a proxy socket under the shared runtime dir. It returns the proxy path and a
+// cleanup func. If xdg-dbus-proxy is absent or session bus address is
+// unavailable, it returns empty path and nil cleanup.
 func SpawnSessionProxy(sessionBusAddr string) (string, func(), error) {
 	bin, err := exec.LookPath("xdg-dbus-proxy")
 	if err != nil {
@@ -36,8 +36,20 @@ func SpawnSessionProxy(sessionBusAddr string) (string, func(), error) {
 	}
 	_ = os.Remove(proxyPath)
 
-	// For session bus, run unfiltered to avoid name validation issues.
-	cmd := exec.Command(bin, sessionBusAddr, proxyPath)
+	// Use a filtered proxy with broad but valid name globs to avoid exposing the
+	// entire session bus while keeping compatibility.
+	args := []string{
+		sessionBusAddr,
+		proxyPath,
+		"--filter",
+		"--see=org.freedesktop.*", "--talk=org.freedesktop.*",
+		"--see=org.*", "--talk=org.*",
+		"--see=com.*", "--talk=com.*",
+		"--see=net.*", "--talk=net.*",
+		"--see=io.*", "--talk=io.*",
+		"--see=cn.*", "--talk=cn.*",
+	}
+	cmd := exec.Command(bin, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

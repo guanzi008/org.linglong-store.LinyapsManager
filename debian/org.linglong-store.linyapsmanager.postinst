@@ -26,12 +26,15 @@ configure)
 		fi
 	fi
 
-	# Reload and enable the user unit for the detected user if their user manager is available
+	# Reload and enable the user unit for the detected user if their user manager is available.
+	# Silence errors when no user bus/session is present (e.g., during apt in non-login context).
 	if command -v systemctl >/dev/null 2>&1 && [ -n "$TARGET_USER" ]; then
 		USER_RUNTIME="/run/user/$(id -u "$TARGET_USER")"
 		if [ -d "$USER_RUNTIME" ]; then
-			runuser -u "$TARGET_USER" -- systemctl --user daemon-reload || true
-			runuser -u "$TARGET_USER" -- systemctl --user enable --now org.linglong-store.linyapsmanager.service || true
+			runuser -u "$TARGET_USER" -- systemctl --user daemon-reload >/dev/null 2>&1 || true
+			runuser -u "$TARGET_USER" -- systemctl --user enable --now org.linglong-store.linyapsmanager.service >/dev/null 2>&1 || true
+		else
+			printf 'Skipping user service enable: no runtime dir for %s\n' "$TARGET_USER" >/dev/null
 		fi
 	fi
 	;;

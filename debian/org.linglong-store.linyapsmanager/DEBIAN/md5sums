@@ -1,6 +1,6 @@
-93663f8287927fb31b3499cf4898f931  usr/bin/linyaps-dbus-server
-a258b4a01a330c2e561e7063950d557f  usr/bin/linyapsctl
-ac3df5198bb73f823ded2a9df066e272  usr/lib/systemd/system/org.linglong-store.linyapsmanager.service
+2c9a67fe0d80d221b41577a2cb8a63d0  usr/bin/linyaps-dbus-server
+00b02652f1c9fc2cf18f0896c95dba6e  usr/bin/linyapsctl
+68e7fba5ce18c4530d12fe992f698a8d  usr/lib/systemd/user/org.linglong-store.linyapsmanager.service
 893d553472a629b67bc643b2b06da9a5  usr/share/dbus-1/system.d/org.linglong_store.LinyapsManager.conf
 67f4744378dd4cc04c24e3ce719acfcc  usr/share/doc/org.linglong-store.linyapsmanager/changelog.Debian.gz
 49a07401c74247a6b4cd07aa58630332  usr/share/doc/org.linglong-store.linyapsmanager/copyright

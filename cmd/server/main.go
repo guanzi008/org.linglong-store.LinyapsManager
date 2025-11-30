@@ -34,6 +34,21 @@ var (
 	appIDPattern       = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 	versionPattern     = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,64}$`)
 	containerIDPattern = regexp.MustCompile(`^[a-fA-F0-9]{6,64}$`)
+	allowedEnvKeys     = map[string]bool{
+		"DISPLAY":                  true,
+		"WAYLAND_DISPLAY":          true,
+		"XAUTHORITY":               true,
+		"DBUS_SESSION_BUS_ADDRESS": true,
+		"DBUS_SYSTEM_BUS_ADDRESS":  true,
+		"XDG_RUNTIME_DIR":          true,
+		"LANG":                     true,
+		"LC_ALL":                   true,
+		"PATH":                     true,
+		"QT_IM_MODULE":             true,
+		"GTK_IM_MODULE":            true,
+		"XMODIFIERS":               true,
+		"HOME":                     true,
+	}
 )
 
 func validateAppID(id string) error {
@@ -66,9 +81,9 @@ func appRef(appID, version string) (string, error) {
 func runLinyaps(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, linyapsCmd, args...)
 	// Inherit environment and ensure dbus addresses follow our proxy preference.
-	env := os.Environ()
-	env = append(env, sessionEnv()...)
-	env = append(env, loadUserEnv()...)
+	env := filterEnv(os.Environ())
+	env = mergeEnv(env, sessionEnv()...)
+	env = mergeEnv(env, loadUserEnv()...)
 	if p := os.Getenv("LINYAPS_DBUS_ADDRESS"); p != "" {
 		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS="+p)
 	} else if p := os.Getenv("DBUS_SYSTEM_BUS_ADDRESS"); p != "" {
@@ -455,14 +470,19 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// sessionEnv grabs session-like env (DISPLAY/DBUS_SESSION/etc.) from an existing
-// user process each time we spawn ll-cli, so we can pick up a session that started
-// after this service launched. Best-effort; returns nil if nothing found.
+// sessionEnv grabs session-like env (DISPLAY/DBUS_SESSION/etc.) with a stable order:
+// 1) current process env (whitelisted keys), 2) lin yaps.env (whitelisted), 3) fallback /proc scan.
 func sessionEnv() []string {
-	return envgrab.CaptureSessionEnv()
+	var merged []string
+	merged = mergeEnv(merged, filterEnv(os.Environ())...)
+	merged = mergeEnv(merged, loadUserEnv()...)
+	if !hasSessionHints(merged) {
+		merged = mergeEnv(merged, filterEnv(envgrab.CaptureSessionEnv())...)
+	}
+	return merged
 }
 
-// loadUserEnv reads an optional env file to inject user session vars (e.g., DISPLAY).
+// loadUserEnv reads an optional env file and whitelists keys to avoid clobbering critical vars.
 // Path: <runtimeBase>/linyaps.env (one KEY=VALUE per line).
 func loadUserEnv() []string {
 	base := proxy.RuntimeBase()
@@ -478,7 +498,65 @@ func loadUserEnv() []string {
 		if l == "" || strings.HasPrefix(l, "#") || !strings.Contains(l, "=") {
 			continue
 		}
+		parts := strings.SplitN(l, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if !allowedEnvKeys[parts[0]] {
+			continue
+		}
 		env = append(env, l)
 	}
 	return env
+}
+
+func filterEnv(in []string) []string {
+	var out []string
+	for _, kv := range in {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if allowedEnvKeys[parts[0]] {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+func mergeEnv(base []string, extra ...string) []string {
+	seen := make(map[string]bool, len(base)+len(extra))
+	for _, kv := range base {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		seen[parts[0]] = true
+	}
+	for _, kv := range extra {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if seen[parts[0]] {
+			continue
+		}
+		base = append(base, kv)
+		seen[parts[0]] = true
+	}
+	return base
+}
+
+func hasSessionHints(env []string) bool {
+	foundDisplay := false
+	foundSession := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "DISPLAY=") || strings.HasPrefix(kv, "WAYLAND_DISPLAY=") {
+			foundDisplay = true
+		}
+		if strings.HasPrefix(kv, "DBUS_SESSION_BUS_ADDRESS=") {
+			foundSession = true
+		}
+	}
+	return foundDisplay || foundSession
 }
