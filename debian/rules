@@ -8,8 +8,8 @@ export GO111MODULE=on
 override_dh_auto_build:
 	dh_auto_build
 	mkdir -p build
-	go build -trimpath -o build/linyaps-dbus-server ./cmd/server
-	go build -trimpath -o build/linyapsctl ./cmd/client
+	go build -mod=vendor -trimpath -o build/linyaps-dbus-server ./cmd/server
+	go build -mod=vendor -trimpath -o build/linyapsctl ./cmd/client
 
 override_dh_auto_clean:
 	dh_auto_clean
