@@ -2,9 +2,90 @@
 set -e
 
 GROUP="linglong-store"
+REPO_FILE="/etc/apt/sources.list.d/linglong.list"
+
+# 检测发行版并返回对应的软件源路径
+# 如果不支持则返回空字符串
+get_repo_path() {
+	if [ ! -f /etc/os-release ]; then
+		return 1
+	fi
+	
+	. /etc/os-release
+	
+	case "$ID" in
+		deepin)
+			case "$VERSION_ID" in
+				25) echo "Deepin_25" ;;
+				23) echo "Deepin_23" ;;
+				*) return 1 ;;
+			esac
+			;;
+		ubuntu)
+			case "$VERSION_ID" in
+				24.04) echo "xUbuntu_24.04" ;;
+				*) return 1 ;;
+			esac
+			;;
+		debian)
+			case "$VERSION_ID" in
+				12) echo "Debian_12" ;;
+				13) echo "Debian_13" ;;
+				*) return 1 ;;
+			esac
+			;;
+		uos)
+			# UOS 20 系列统一使用 uos_1070 源
+			case "$VERSION_ID" in
+				20) echo "uos_1070" ;;
+				*) return 1 ;;
+			esac
+			;;
+		openkylin)
+			case "$VERSION_ID" in
+				2.0) echo "openkylin_2.0" ;;
+				*) return 1 ;;
+			esac
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+# 添加 linglong 软件源
+add_linglong_repo() {
+	# 如果源文件已存在则跳过
+	if [ -f "$REPO_FILE" ]; then
+		echo "linglong 软件源已存在，跳过添加"
+		return 0
+	fi
+	
+	REPO_PATH=$(get_repo_path) || {
+		. /etc/os-release 2>/dev/null || true
+		echo "========================================" >&2
+		echo "错误: 不支持当前发行版" >&2
+		echo "发行版: ${PRETTY_NAME:-$ID $VERSION_ID}" >&2
+		echo "" >&2
+		echo "目前支持的发行版:" >&2
+		echo "  - Deepin 23 / 25" >&2
+		echo "  - Ubuntu 24.04" >&2
+		echo "  - Debian 12 / 13" >&2
+		echo "  - UOS 20" >&2
+		echo "  - openKylin 2.0" >&2
+		echo "========================================" >&2
+		return 1
+	}
+	
+	echo "deb [trusted=yes] https://ci.deepin.com/repo/obs/linglong:/CI:/release/${REPO_PATH}/ ./" > "$REPO_FILE"
+	echo "已添加 linglong 软件源: $REPO_PATH"
+}
 
 case "$1" in
 configure)
+	# 添加软件源（不支持的发行版会终止安装）
+	add_linglong_repo || exit 1
+
 	# Ensure group exists
 	if ! getent group "$GROUP" >/dev/null 2>&1; then
 		addgroup --system "$GROUP" || true
