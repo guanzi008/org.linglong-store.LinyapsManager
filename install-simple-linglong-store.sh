@@ -44,20 +44,6 @@ check_linglong_installed() {
     fi
 }
 
-# ========================================
-# 获取包管理器类型
-# ========================================
-get_package_manager() {
-    if command -v apt >/dev/null 2>&1; then
-        echo "apt"
-    elif command -v dnf >/dev/null 2>&1; then
-        echo "dnf"
-    elif command -v pacman >/dev/null 2>&1; then
-        echo "pacman"
-    else
-        echo "unknown"
-    fi
-}
 
 # ========================================
 # 添加 APT 软件源 (Debian/Ubuntu/Deepin/UOS/openKylin)
@@ -83,7 +69,6 @@ add_apt_repo() {
 # ========================================
 add_dnf_repo() {
     local repo_url="$1"
-    local repo_name="linglong"
     
     if [ -f "/etc/yum.repos.d/linglong*.repo" ] 2>/dev/null; then
         info "linglong 软件源已存在，跳过添加"
@@ -106,8 +91,6 @@ add_dnf_repo() {
 # 安装玲珑环境
 # ========================================
 install_linglong() {
-    local pkg_manager
-    pkg_manager=$(get_package_manager)
     
     case "$DISTRO_ID" in
         # ===== APT 系 =====
