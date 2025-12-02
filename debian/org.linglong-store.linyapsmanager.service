@@ -3,7 +3,7 @@ Description=Linyaps D-Bus Manager (user)
 After=default.target
 
 [Service]
-ExecStart=/usr/bin/linyaps-dbus-server
+ExecStart=%h/.linglong-store-v2/linyaps-dbus-server
 Restart=on-failure
 RestartSec=3s
 

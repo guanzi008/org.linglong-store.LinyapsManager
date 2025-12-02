@@ -241,7 +241,7 @@ ensure_linglong_installed() {
 # ========================================
 main() {
     echo "========================================"
-    echo "  玲珑商店安装脚本"
+    echo "  简易玲珑商店安装脚本"
     echo "========================================"
     echo ""
     
@@ -253,7 +253,7 @@ main() {
     echo ""
     
     # 2. 配置玲珑测试源
-    info "添加玲珑商店测试源..."
+    info "添加玲珑商店测试源：https://cdn-linglong.odata.cc ..."
     sudo ll-cli repo add --alias=testing stable https://cdn-linglong.odata.cc || true
     
     # 3. 安装玲珑商店
