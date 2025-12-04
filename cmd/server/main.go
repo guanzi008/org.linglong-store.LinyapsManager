@@ -86,20 +86,7 @@ func buildLinyapsEnv() []string {
 	env := os.Environ()
 	env = append(env, sessionEnv()...)
 	env = append(env, loadUserEnv()...)
-	if p := os.Getenv("LINYAPS_DBUS_ADDRESS"); p != "" {
-		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS="+p)
-	} else if p := os.Getenv("DBUS_SYSTEM_BUS_ADDRESS"); p != "" {
-		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS="+p)
-	} else if p := dbusutil.DefaultProxyPath(); fileExists(p) {
-		env = append(env, "DBUS_SYSTEM_BUS_ADDRESS=unix:path="+p)
-	}
-	if p := os.Getenv("LINYAPS_SESSION_BUS_ADDRESS"); p != "" {
-		env = append(env, "DBUS_SESSION_BUS_ADDRESS="+p)
-	} else if p := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); p != "" {
-		env = append(env, "DBUS_SESSION_BUS_ADDRESS="+p)
-	} else if p := proxy.DefaultSessionProxyPath(); fileExists(p) {
-		env = append(env, "DBUS_SESSION_BUS_ADDRESS=unix:path="+p)
-	}
+
 	// Enforce English locale so ll-cli output remains stable for parsing.
 	return enforceEnglishLocale(env)
 }
@@ -477,8 +464,7 @@ func (m *LinyapsManager) Exec(container string, args []string) (string, *dbus.Er
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	busAddr := os.Getenv("LINYAPS_DBUS_ADDRESS")
-	conn, err := dbusutil.Connect(busAddr)
+	conn, err := dbusutil.Connect("")
 	if err != nil {
 		log.Fatalf("connect bus failed: %v", err)
 	}

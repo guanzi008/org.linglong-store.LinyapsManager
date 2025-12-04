@@ -3,6 +3,7 @@ package dbusutil
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,6 +27,17 @@ func DefaultProxyPath() string {
 // default proxy path (if present) and finally the default system bus.
 func Connect(addr string) (*dbus.Conn, error) {
 	triedProxy := false
+
+	// If no explicit address is provided, prefer the Session Bus if available.
+	// This ensures that on the host (where DBUS_SESSION_BUS_ADDRESS is set),
+	// we connect directly to the session bus instead of falling back to the proxy
+	// (which might be pointing to the system bus).
+	if addr == "" && os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
+		if conn, err := dbus.ConnectSessionBus(); err == nil {
+			return conn, nil
+		}
+	}
+
 	if addr == "" {
 		addr = os.Getenv("DBUS_SYSTEM_BUS_ADDRESS")
 	}
@@ -42,6 +54,7 @@ func Connect(addr string) (*dbus.Conn, error) {
 		}
 	}
 	if addr != "" {
+		log.Printf("[INFO] Connecting to D-Bus at address: %s", addr)
 		conn, err := dialAndAuth(addr)
 		if err != nil {
 			// If we tried to reuse a stale proxy socket, drop it and fall back to the system bus.
