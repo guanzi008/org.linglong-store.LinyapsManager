@@ -406,15 +406,21 @@ func (m *LinyapsManager) Run(appID, version string) (string, *dbus.Error) {
 	return out, nil
 }
 
-func (m *LinyapsManager) Kill(appID string) (string, *dbus.Error) {
-	log.Printf("[INFO] Kill appID=%s", appID)
+func (m *LinyapsManager) Kill(appID, signal string) (string, *dbus.Error) {
+	log.Printf("[INFO] Kill appID=%s signal=%q", appID, signal)
 	if err := validateAppID(appID); err != nil {
 		return "", dbus.MakeFailedError(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
 	defer cancel()
 
-	out, err := runLinyaps(ctx, "kill", appID)
+	args := []string{"kill"}
+	if strings.TrimSpace(signal) != "" {
+		args = append(args, "-s", strings.TrimSpace(signal))
+	}
+	args = append(args, appID)
+
+	out, err := runLinyaps(ctx, args...)
 	if err != nil {
 		return out, dbus.MakeFailedError(err)
 	}

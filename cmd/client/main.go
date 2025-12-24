@@ -28,7 +28,7 @@ func printUsage() {
 	fmt.Println("  linyapsctl install <appId>[/<version>] [--force] [-y]")
 	fmt.Println("  linyapsctl uninstall <appId>[/<version>]")
 	fmt.Println("  linyapsctl run <appId>[/<version>]")
-	fmt.Println("  linyapsctl kill <appId>")
+	fmt.Println("  linyapsctl kill [-s <signal>] <appId>")
 	fmt.Println("  linyapsctl prune")
 	fmt.Println("  linyapsctl exec <container> -- <args...>")
 }
@@ -41,8 +41,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	busAddr := os.Getenv("LINYAPS_DBUS_ADDRESS")
-	conn, err := dbusutil.Connect(busAddr)
+	conn, err := dbusutil.Connect("")
 	if err != nil {
 		log.Fatalf("connect bus failed: %v", err)
 	}
@@ -199,6 +198,37 @@ func parseForceFlag(args []string) (bool, []string) {
 		}
 	}
 	return force, rest
+}
+
+func parseKillArgs(args []string) (string, string, error) {
+	var appID string
+	var signal string
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-s" || a == "--signal":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("missing value for %s", a)
+			}
+			signal = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--signal="):
+			signal = strings.TrimPrefix(a, "--signal=")
+		case strings.HasPrefix(a, "-"):
+			return "", "", fmt.Errorf("unknown option: %s", a)
+		default:
+			if appID != "" {
+				return "", "", fmt.Errorf("unexpected extra argument: %s", a)
+			}
+			appID = a
+		}
+	}
+
+	if appID == "" {
+		return "", "", fmt.Errorf("appId is required")
+	}
+	return appID, signal, nil
 }
 
 // parseAppRef splits appId/version to keep CLI usage identical to ll-cli.
@@ -419,13 +449,13 @@ func handleRun(obj dbus.BusObject, args []string) {
 }
 
 func handleKill(obj dbus.BusObject, args []string) {
-	if len(args) != 1 {
-		fmt.Println("Usage: linyapsctl kill <appId>")
+	appID, signal, err := parseKillArgs(args)
+	if err != nil {
+		fmt.Println("Usage: linyapsctl kill [-s <signal>] <appId>")
 		os.Exit(1)
 	}
-	appID := args[0]
 
-	out, err := callString(obj, "Kill", appID)
+	out, err := callString(obj, "Kill", appID, signal)
 	if err != nil {
 		log.Fatalf("Kill failed: %v", err)
 	}
