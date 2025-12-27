@@ -92,6 +92,7 @@ func buildLinyapsEnv() []string {
 }
 
 func runLinyaps(ctx context.Context, args ...string) (string, error) {
+	log.Printf("[INFO] command: ll-cli %v", args)
 	cmd := exec.CommandContext(ctx, linyapsCmd, args...)
 	cmd.Env = buildLinyapsEnv()
 
