@@ -1,3 +1,4 @@
+# Copilot Instructions
 
 本文件为 GitHub Copilot 的仓库级说明，帮助 Copilot 和贡献者在本项目中生成更贴合的代码。请严格遵循下列约定与约束。
 
@@ -7,71 +8,119 @@
 **只有在用户确认你的方案后，才开始动手写代码。**
 
 ## 概述
-这个项目是一个dbus转发命令行输出的项目，目的是为了让玲珑应用商店在容器中能够调用外部的ll-cli命令行工具。
-client致力于完整还原ll-cli的命令行交互体验，server负责调用ll-cli并通过dbus转发输出。
+这个项目是一个 D-Bus 转发命令行输出的项目，目的是为了让玲珑应用商店在容器中能够调用外部的命令行工具（如 `ll-cli`, `killall` 等）。
 
+**核心设计思想：**
+- 服务端暴露单一的 `ExecuteCommand(command, args)` 方法
+- 客户端通过**程序名自动识别**要执行的命令（符号链接）
+- 所有命令统一使用流式输出
 
 ## 架构
 
-- **服务 (Server):** `cmd/server/main.go`
-  - 在 `/org/linglong_store/LinyapsManager` 暴露 D-Bus 接口 `org.linglong_store.LinyapsManager`。
-  - 封装 `ll-cli` 命令（安装、运行、列表等）。
-  - 管理沙箱应用的环境变量和代理套接字。
-- **客户端 (CLI):** `cmd/client/main.go`
-  - `linyapsctl` 通过 D-Bus 与服务通信。
-  - 支持标准命令和长运行操作的流式输出。
-- **流式传输 (Streaming):** `internal/streaming`
-  - 实现了一个自定义协议，使用 `operationID` 通过 D-Bus 信号 (`Output`, `Complete`) 流式传输命令输出 (stdout/stderr)。
+### 服务端 (Server): `cmd/server/main.go`
+- 在 `/org/linglong_store/LinyapsManager` 暴露 D-Bus 接口
+- **单一方法**: `ExecuteCommand(command string, args []string) -> operationID`
+- 使用白名单验证允许执行的命令
+- 管理沙箱应用的环境变量和代理套接字
+
+### 客户端 (Client): `cmd/client/main.go`
+- 客户端二进制通过**符号链接**伪装成不同命令
+- 自动识别调用时的程序名，作为要执行的命令
+- 用户体验：`ll-cli install app` 感觉就像直接调用 `ll-cli`
+
+### 白名单模块: `internal/cmdwhitelist/`
+- `config.go`: 定义允许执行的程序列表和规则
+- `validator.go`: 验证命令和参数的合法性
+
+### 流式传输 (Streaming): `internal/streaming/`
+- 使用 `operationID` 通过 D-Bus 信号流式传输命令输出
+- 信号: `Output(operationID, data, isStderr)`, `Complete(operationID, exitCode, errorMsg)`
 
 ## 关键组件与模式
 
+### 命令白名单
+```go
+// internal/cmdwhitelist/config.go
+var AllowedCommands = map[string]CommandConfig{
+    "ll-cli":  {Program: "ll-cli", NeedsEnv: true, AllowedSubcmds: [...]},
+    "killall": {Program: "/usr/bin/killall", RequireArgs: true},
+    "kill":    {Program: "/usr/bin/kill", RequireArgs: true},
+    "pkexec":  {Program: "/usr/bin/pkexec", RequireArgs: true},
+}
+```
+
+### 客户端符号链接
+```bash
+# 构建后的目录结构
+build/
+├── linyaps-client          # 客户端主程序
+├── linyaps-dbus-server     # 服务端
+├── ll-cli -> linyaps-client
+├── killall -> linyaps-client
+├── kill -> linyaps-client
+└── pkexec -> linyaps-client
+```
+
 ### D-Bus 通信
-- **库:** 使用 `github.com/godbus/dbus/v5`。
-- **常量:** 定义在 `internal/dbusconsts/consts.go` 中。
-- **错误处理:** 服务端方法必须返回 `*dbus.Error` (例如 `dbus.MakeFailedError(err)`)。
-- **连接:** `internal/dbusutil` 处理连接逻辑，遵循 `LINYAPS_DBUS_ADDRESS` 环境变量。
+- **库:** `github.com/godbus/dbus/v5`
+- **常量:** `internal/dbusconsts/consts.go`
+- **连接:** `internal/dbusutil` 处理连接逻辑
 
 ### 流式协议
-对于长运行操作（例如 `InstallStream`），使用流式模式：
-1. **服务端:** 调用 `streaming.RunCommandStreaming`。立即返回一个 `operationID`。
-2. **服务端:** 后台 goroutine 发送 `Output` 信号，最后发送 `Complete` 信号。
-3. **客户端:** 调用方法获取 `operationID`，然后使用 `streaming.Receiver` 等待信号。
-
-### 环境与代理
-- **环境注入:** `cmd/server/main.go` 中的 `internal/envgrab` 和 `buildLinyapsEnv` 将关键变量 (`DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`) 注入到 `ll-cli` 进程中。
-- **代理:** `internal/proxy` 管理套接字代理，允许容器化应用访问主机总线。
-
-### 验证
-- **AppID/Version:** 在执行命令前，使用 `validateAppID` 和 `validateVersion` 正则表达式模式验证输入。
+1. **客户端:** 调用 `ExecuteCommand(command, args)`，获取 `operationID`
+2. **服务端:** 后台 goroutine 发送 `Output` 信号，最后发送 `Complete` 信号
+3. **客户端:** 使用 `streaming.Receiver` 接收信号并输出
 
 ## 开发工作流
 
 ### 构建
 ```bash
+# 使用构建脚本（推荐）
+./build.sh
+
+# 或手动构建
 go build -o build/linyaps-dbus-server ./cmd/server
-go build -o build/linyapsctl ./cmd/client
+go build -o build/linyaps-client ./cmd/client
+cd build && ln -s linyaps-client ll-cli
 ```
 
 ### 运行
-服务端需要 `ll-cli` 可用或被 mock。
 ```bash
-# 运行服务端 (根据需要调整环境变量)
-export LINYAPS_DBUS_ADDRESS=unix:path=/tmp/linyaps.sock
+# 启动服务端
 ./build/linyaps-dbus-server
 
-# 运行客户端
-export LINYAPS_DBUS_ADDRESS=unix:path=/tmp/linyaps.sock
-./build/linyapsctl list
+# 使用客户端（通过符号链接）
+./build/ll-cli list
+./build/ll-cli install com.example.app
+./build/killall firefox
 ```
 
 ### 测试
-- 运行单元测试: `go test ./...`
-- 验证流式传输: `linyapsctl test` 触发服务端的 `TestStream` 方法。
+```bash
+# 运行单元测试
+go test ./...
+
+# 测试白名单验证
+go test ./internal/cmdwhitelist/...
+```
+
+## 添加新命令
+
+1. 在 `internal/cmdwhitelist/config.go` 的 `AllowedCommands` 中添加配置
+2. 在 `build.sh` 的 `SYMLINKS` 数组中添加命令名
+3. 重新构建
+
+```go
+// 示例：添加 systemctl 命令
+"systemctl": {
+    Program:        "/usr/bin/systemctl",
+    AllowedSubcmds: []string{"status", "start", "stop"},
+    RequireArgs:    true,
+},
+```
 
 ## 常见任务
 
-- **添加新命令:**
-  1. 在 `cmd/server/main.go` 的 `LinyapsManager` 结构体中添加方法。
-  2. 实现 `ll-cli` 封装逻辑。
-  3. 在 `cmd/client/main.go` 中添加 CLI 命令处理。
-  4. 如果是长运行任务，使用 `InstallStream` 模式。
+- **修改白名单规则:** 编辑 `internal/cmdwhitelist/config.go`
+- **添加环境变量注入:** 在命令配置中设置 `NeedsEnv: true`
+- **阻止危险参数:** 在配置的 `BlockedArgs` 中添加

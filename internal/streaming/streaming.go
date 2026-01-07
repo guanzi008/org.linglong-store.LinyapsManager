@@ -12,8 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/creack/pty"
-
 	"github.com/godbus/dbus/v5"
 
 	"linyapsmanager/internal/dbusconsts"
@@ -70,10 +68,10 @@ func (e *Emitter) EmitComplete(operationID string, exitCode int, errorMsg string
 	)
 }
 
-// RunCommandStreaming executes a command and streams its output via D-Bus signals.
+// RunCommand executes a command and streams its output via D-Bus signals.
 // Returns the operation ID immediately; the command runs asynchronously.
 // The Complete signal will be emitted when the command finishes.
-func RunCommandStreaming(ctx context.Context, emitter *Emitter, env []string, cmdPath string, args ...string) (string, error) {
+func RunCommand(ctx context.Context, emitter *Emitter, env []string, cmdPath string, args ...string) (string, error) {
 	operationID := GenerateOperationID()
 
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
@@ -91,6 +89,8 @@ func RunCommandStreaming(ctx context.Context, emitter *Emitter, env []string, cm
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("failed to start command: %w", err)
 	}
+
+	log.Printf("[streaming] started command: %s %v (opID=%s)", cmdPath, args, operationID)
 
 	// Stream output in background
 	go func() {
@@ -124,103 +124,13 @@ func RunCommandStreaming(ctx context.Context, emitter *Emitter, env []string, cm
 			}
 		}
 
-		emitter.EmitComplete(operationID, exitCode, errorMsg)
+		log.Printf("[streaming] command finished (opID=%s, exitCode=%d)", operationID, exitCode)
+		if emitErr := emitter.EmitComplete(operationID, exitCode, errorMsg); emitErr != nil {
+			fmt.Fprintf(os.Stderr, "[streaming] failed to emit complete: %v\n", emitErr)
+		}
 	}()
 
 	return operationID, nil
-}
-
-// RunCommandStreamingPTY executes a command inside a pseudo-terminal and streams its output.
-// This is useful for commands that only emit progressive output when attached to a TTY (e.g., ll-cli install).
-func RunCommandStreamingPTY(ctx context.Context, emitter *Emitter, env []string, cmdPath string, args ...string) (string, error) {
-	operationID := GenerateOperationID()
-
-	cmd := exec.CommandContext(ctx, cmdPath, args...)
-	cmd.Env = env
-
-	ptyFile, err := pty.StartWithAttrs(cmd, &pty.Winsize{Rows: 24, Cols: 80}, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to start command with pty: %w", err)
-	}
-
-	// Stream output in background
-	go func() {
-		defer ptyFile.Close()
-
-		streamReader(emitter, operationID, ptyFile, false)
-
-		// Wait for command to finish
-		err := cmd.Wait()
-		exitCode := 0
-		errorMsg := ""
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			} else {
-				exitCode = -1
-				errorMsg = err.Error()
-			}
-		}
-
-		emitter.EmitComplete(operationID, exitCode, errorMsg)
-	}()
-
-	return operationID, nil
-}
-
-// RunCommandStreamingSync executes a command and streams its output via D-Bus signals.
-// Blocks until the command completes. Returns the exit code and any error.
-func RunCommandStreamingSync(ctx context.Context, emitter *Emitter, env []string, cmdPath string, args ...string) (string, int, error) {
-	operationID := GenerateOperationID()
-
-	cmd := exec.CommandContext(ctx, cmdPath, args...)
-	cmd.Env = env
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return operationID, -1, fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return operationID, -1, fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return operationID, -1, fmt.Errorf("failed to start command: %w", err)
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Stream stdout
-	go func() {
-		defer wg.Done()
-		streamReader(emitter, operationID, stdout, false)
-	}()
-
-	// Stream stderr
-	go func() {
-		defer wg.Done()
-		streamReader(emitter, operationID, stderr, true)
-	}()
-
-	wg.Wait()
-
-	// Wait for command to finish
-	err = cmd.Wait()
-	exitCode := 0
-	errorMsg := ""
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1
-			errorMsg = err.Error()
-		}
-	}
-
-	emitter.EmitComplete(operationID, exitCode, errorMsg)
-	return operationID, exitCode, nil
 }
 
 // streamReader reads from a reader line by line and emits output signals.
@@ -233,7 +143,6 @@ func streamReader(emitter *Emitter, operationID string, r io.Reader, isStderr bo
 
 	for scanner.Scan() {
 		line := scanner.Text() + "\n"
-		log.Printf("[streaming] %s: %s", operationID, line)
 		if err := emitter.EmitOutput(operationID, line, isStderr); err != nil {
 			// Log error but continue streaming
 			fmt.Fprintf(os.Stderr, "[streaming] failed to emit output: %v\n", err)
@@ -243,8 +152,9 @@ func streamReader(emitter *Emitter, operationID string, r io.Reader, isStderr bo
 }
 
 // scanLinesCR is like bufio.ScanLines but also treats carriage returns as line breaks.
-// 有些命令（尤其是带进度条的）会用 \r 覆盖当前行显示进度，不一定带 \n。默认的 ScanLines 只认 \n，
-// 会吃不到中途的进度；用这个函数就能把每次 \r 刷新的内容也当成一行，实时发出去。
+// Some commands (especially those with progress bars) use \r to overwrite the current line.
+// The default ScanLines only recognizes \n, so progress updates may not be captured.
+// This function treats each \r refresh as a separate line for real-time streaming.
 func scanLinesCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	// Look for newline or carriage return.
 	for i, b := range data {

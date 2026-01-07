@@ -13,6 +13,4 @@
 *.deb
 *.buildinfo
 *.changes
-client
-server
-linglong-docs
+linglong-docs/

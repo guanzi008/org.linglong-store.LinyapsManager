@@ -244,22 +244,17 @@ main() {
     echo "  简易玲珑商店安装脚本"
     echo "========================================"
     echo ""
+
+    # 确保脚本以root权限运行
+    if [ "$(id -u)" -ne "0" ]; then
+        echo "请使用root权限运行此脚本"
+        exit 1
+    fi
     
     # 1. 检查玲珑环境，没有就安装
     ensure_linglong_installed
     
-    echo ""
-    info "玲珑环境就绪，继续安装玲珑商店..."
-    echo ""
-    
-    # 2. 配置玲珑测试源
-    info "添加玲珑商店测试源：https://cdn-linglong.odata.cc ..."
-    sudo ll-cli repo add --alias=testing stable https://cdn-linglong.odata.cc || true
-    
-    # 3. 安装玲珑商店
-    info "安装玲珑商店..."
-    sudo ll-cli install com.dongpl.linglong-store.v2 --repo testing
-    
+
     echo ""
     info "安装完成！"
 }
