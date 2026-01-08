@@ -1,11 +1,11 @@
 # Makefile for LinyapsManager
 # Builds server binary and client with symlinks for allowed commands
 
-.PHONY: all server client symlinks clean test install uninstall help
+.PHONY: all server client symlinks release clean test install uninstall help
 
 # Build configuration
 BUILD_DIR := build
-CLIENT_BINARY := linyaps-client
+CLIENT_BINARY := linyapsctl
 SERVER_BINARY := linyaps-dbus-server
 CMD_SERVER := ./cmd/server
 CMD_CLIENT := ./cmd/client
@@ -16,7 +16,13 @@ SYMLINKS := ll-cli killall kill pkexec
 # Go build flags
 GO := go
 GOFLAGS := -v
+GOMODFLAGS ?= -mod=vendor
+TRIMPATH ?=
+# Strip debug info (-s) and DWARF (-w)
 LDFLAGS := -s -w
+# Release build flags for smaller binaries
+RELEASE_LDFLAGS := -s -w -buildmode=pie
+RELEASE_TAGS := osusergo,netgo
 
 # Default target
 all: server client symlinks
@@ -41,12 +47,12 @@ $(BUILD_DIR):
 # Build server
 server: $(BUILD_DIR)
 	@echo "Building server..."
-	@$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(SERVER_BINARY) $(CMD_SERVER)
+	@$(GO) build $(GOMODFLAGS) $(TRIMPATH) $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(SERVER_BINARY) $(CMD_SERVER)
 
 # Build client
 client: $(BUILD_DIR)
 	@echo "Building client..."
-	@$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(CLIENT_BINARY) $(CMD_CLIENT)
+	@$(GO) build $(GOMODFLAGS) $(TRIMPATH) $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(CLIENT_BINARY) $(CMD_CLIENT)
 
 # Create symlinks for allowed commands
 symlinks: client
@@ -57,6 +63,22 @@ symlinks: client
 		ln -s $(CLIENT_BINARY) $$cmd; \
 		echo "  Created symlink: $$cmd -> $(CLIENT_BINARY)"; \
 	done
+
+# Build release artifacts into OUTDIR with GOOS/GOARCH suffixes
+OUTDIR ?= out
+release:
+	@echo "Building release artifacts (optimized)..."
+	@mkdir -p $(OUTDIR)
+	@if [ -z "$(GOOS)" ] || [ -z "$(GOARCH)" ]; then \
+		echo "Error: GOOS/GOARCH must be set (e.g. GOOS=linux GOARCH=amd64)"; \
+		exit 2; \
+	fi
+	@echo "Building server with flags: -trimpath -ldflags '$(RELEASE_LDFLAGS)' -tags '$(RELEASE_TAGS)'"
+	@CGO_ENABLED=1 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(SERVER_BINARY)-$(GOOS)-$(GOARCH) $(CMD_SERVER)
+	@echo "Building client with flags: -trimpath -ldflags '$(RELEASE_LDFLAGS)' -tags '$(RELEASE_TAGS)'"
+	@CGO_ENABLED=1 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(CLIENT_BINARY)-$(GOOS)-$(GOARCH) $(CMD_CLIENT)
+	@echo "Build artifacts:"
+	@ls -lh $(OUTDIR)/$(SERVER_BINARY)-$(GOOS)-$(GOARCH) $(OUTDIR)/$(CLIENT_BINARY)-$(GOOS)-$(GOARCH) 2>/dev/null || true
 
 # Run tests
 test:
@@ -79,6 +101,7 @@ help:
 	@echo "  make server    - Build server only"
 	@echo "  make client    - Build client only"
 	@echo "  make symlinks  - Create command symlinks"
+	@echo "  make release   - Build GOOS/GOARCH artifacts into OUTDIR (default out/)"
 	@echo "  make test      - Run all tests"
 	@echo "  make clean     - Remove build artifacts"
 	@echo "  make install   - Install to /usr/local/bin (requires root)"

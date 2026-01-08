@@ -9,6 +9,7 @@ import (
 	"github.com/godbus/dbus/v5"
 
 	"linyapsmanager/internal/cmdwhitelist"
+	_ "linyapsmanager/internal/cmdwhitelist/rules" // Register command rules
 	"linyapsmanager/internal/dbusconsts"
 	"linyapsmanager/internal/dbusutil"
 	"linyapsmanager/internal/streaming"
@@ -21,8 +22,8 @@ func main() {
 	execPath := os.Args[0]
 	cmdName := filepath.Base(execPath)
 
-	// Handle special case: if invoked as the original binary name
-	if cmdName == "linyaps-client" || cmdName == "linyapsctl" {
+	// Handle special case: if invoked as the base client binary name
+	if cmdName == "linyapsctl" {
 		printUsage()
 		os.Exit(1)
 	}
@@ -60,11 +61,11 @@ func printUsage() {
 	fmt.Println("This program should be invoked via symlinks named after the command to execute.")
 	fmt.Println()
 	fmt.Println("Example:")
-	fmt.Println("  ln -s linyaps-client ll-cli")
+	fmt.Println("  ln -s linyapsctl ll-cli")
 	fmt.Println("  ./ll-cli install com.example.app")
 	fmt.Println()
 	fmt.Println("Allowed commands:")
-	for cmd := range cmdwhitelist.AllowedCommands {
+	for _, cmd := range cmdwhitelist.ListCommands() {
 		fmt.Printf("  - %s\n", cmd)
 	}
 }

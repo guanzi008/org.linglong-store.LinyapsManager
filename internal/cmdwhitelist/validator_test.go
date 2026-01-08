@@ -1,7 +1,10 @@
-package cmdwhitelist
+package cmdwhitelist_test
 
 import (
 	"testing"
+
+	"linyapsmanager/internal/cmdwhitelist"
+	_ "linyapsmanager/internal/cmdwhitelist/rules" // Register command rules
 )
 
 func TestIsAllowed(t *testing.T) {
@@ -21,7 +24,7 @@ func TestIsAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsAllowed(tt.cmdName); got != tt.want {
+			if got := cmdwhitelist.IsAllowed(tt.cmdName); got != tt.want {
 				t.Errorf("IsAllowed(%q) = %v, want %v", tt.cmdName, got, tt.want)
 			}
 		})
@@ -43,7 +46,7 @@ func TestGetProgram(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetProgram(tt.cmdName); got != tt.want {
+			if got := cmdwhitelist.GetProgram(tt.cmdName); got != tt.want {
 				t.Errorf("GetProgram(%q) = %q, want %q", tt.cmdName, got, tt.want)
 			}
 		})
@@ -66,7 +69,8 @@ func TestValidateCommand(t *testing.T) {
 		// Kill commands
 		{"kill with pid", "kill", []string{"12345"}, "/usr/bin/kill", false},
 		{"kill with signal", "kill", []string{"-9", "12345"}, "/usr/bin/kill", false},
-		{"killall process", "killall", []string{"firefox"}, "/usr/bin/killall", false},
+		{"killall ll-cli", "killall", []string{"ll-cli"}, "/usr/bin/killall", false},
+		{"killall with signal", "killall", []string{"-15", "ll-cli"}, "/usr/bin/killall", false},
 		// pkexec with nested command
 		{"pkexec ll-cli", "pkexec", []string{"ll-cli", "install", "app"}, "/usr/bin/pkexec", false},
 		// Errors
@@ -79,7 +83,7 @@ func TestValidateCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			program, _, err := ValidateCommand(tt.cmdName, tt.args)
+			program, _, err := cmdwhitelist.ValidateCommand(tt.cmdName, tt.args)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("ValidateCommand(%q, %v) expected error, got nil", tt.cmdName, tt.args)
@@ -106,12 +110,13 @@ func TestValidateCommand_BlockedArgs(t *testing.T) {
 	}{
 		{"killall blocked -u", "killall", []string{"-u", "root"}, true},
 		{"killall blocked --user", "killall", []string{"--user", "root"}, true},
-		{"killall normal ok", "killall", []string{"firefox"}, false},
+		{"killall ll-cli ok", "killall", []string{"ll-cli"}, false},
+		{"killall firefox blocked", "killall", []string{"firefox"}, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := ValidateCommand(tt.cmdName, tt.args)
+			_, _, err := cmdwhitelist.ValidateCommand(tt.cmdName, tt.args)
 			if tt.wantErr && err == nil {
 				t.Errorf("ValidateCommand(%q, %v) expected error for blocked arg", tt.cmdName, tt.args)
 			}
@@ -128,7 +133,7 @@ func TestValidateCommand_MaxArgs(t *testing.T) {
 	for i := range manyArgs {
 		manyArgs[i] = "arg"
 	}
-	_, _, err := ValidateCommand("ll-cli", append([]string{"list"}, manyArgs...))
+	_, _, err := cmdwhitelist.ValidateCommand("ll-cli", append([]string{"list"}, manyArgs...))
 	if err == nil {
 		t.Error("ValidateCommand with too many args should return error")
 	}
@@ -148,7 +153,7 @@ func TestNeedsSpecialEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.cmdName, func(t *testing.T) {
-			if got := NeedsSpecialEnv(tt.cmdName); got != tt.want {
+			if got := cmdwhitelist.NeedsSpecialEnv(tt.cmdName); got != tt.want {
 				t.Errorf("NeedsSpecialEnv(%q) = %v, want %v", tt.cmdName, got, tt.want)
 			}
 		})

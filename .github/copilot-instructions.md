@@ -53,12 +53,12 @@ var AllowedCommands = map[string]CommandConfig{
 ```bash
 # 构建后的目录结构
 build/
-├── linyaps-client          # 客户端主程序
+├── linyapsctl              # 客户端主程序
 ├── linyaps-dbus-server     # 服务端
-├── ll-cli -> linyaps-client
-├── killall -> linyaps-client
-├── kill -> linyaps-client
-└── pkexec -> linyaps-client
+├── ll-cli -> linyapsctl
+├── killall -> linyapsctl
+├── kill -> linyapsctl
+└── pkexec -> linyapsctl
 ```
 
 ### D-Bus 通信
@@ -75,13 +75,13 @@ build/
 
 ### 构建
 ```bash
-# 使用构建脚本（推荐）
-./build.sh
+# 使用 Makefile（推荐）
+make
 
 # 或手动构建
 go build -o build/linyaps-dbus-server ./cmd/server
-go build -o build/linyaps-client ./cmd/client
-cd build && ln -s linyaps-client ll-cli
+go build -o build/linyapsctl ./cmd/client
+cd build && ln -s linyapsctl ll-cli
 ```
 
 ### 运行
@@ -107,7 +107,7 @@ go test ./internal/cmdwhitelist/...
 ## 添加新命令
 
 1. 在 `internal/cmdwhitelist/config.go` 的 `AllowedCommands` 中添加配置
-2. 在 `build.sh` 的 `SYMLINKS` 数组中添加命令名
+2. 在 `Makefile` 的 `SYMLINKS` 变量中添加命令名
 3. 重新构建
 
 ```go

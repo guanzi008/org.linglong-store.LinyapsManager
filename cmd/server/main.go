@@ -13,6 +13,7 @@ import (
 	"github.com/godbus/dbus/v5"
 
 	"linyapsmanager/internal/cmdwhitelist"
+	_ "linyapsmanager/internal/cmdwhitelist/rules" // Register command rules
 	"linyapsmanager/internal/dbusconsts"
 	"linyapsmanager/internal/dbusutil"
 	"linyapsmanager/internal/envgrab"
