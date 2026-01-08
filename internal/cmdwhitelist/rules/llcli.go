@@ -45,6 +45,14 @@ var llcliAllowedSubcmds = map[string]bool{
 	"content":   true,
 }
 
+// commonFlags lists common global flags that can appear anywhere in the command line.
+var llcliCommonFlags = map[string]bool{
+	"--json":    true,
+	"--verbose": true,
+	"--debug":   true,
+	"--no-dbus": true,
+}
+
 const llcliMaxArgs = 20
 
 func (r *llcliRule) Validate(args []string) ([]string, error) {
@@ -55,25 +63,26 @@ func (r *llcliRule) Validate(args []string) ([]string, error) {
 
 	// Check subcommand if present
 	if len(args) > 0 {
-		subcmd := args[0]
-		// Find the first non-flag argument as subcommand
+		// Find the first argument that's not a common flag
+		var subcmd string
 		for _, arg := range args {
-			if !strings.HasPrefix(arg, "-") {
-				subcmd = arg
-				break
+			// Skip common global flags
+			if llcliCommonFlags[arg] {
+				continue
 			}
+			// Skip option-value pairs (e.g., --repo <url>)
+			if strings.HasPrefix(arg, "-") && !llcliAllowedSubcmds[arg] {
+				// Unknown flag - skip it (ll-cli will validate)
+				continue
+			}
+			// Found a subcommand or special flag
+			subcmd = arg
+			break
 		}
 
-		// If first arg is a flag, check it's allowed
-		if strings.HasPrefix(args[0], "-") {
-			if !llcliAllowedSubcmds[args[0]] {
-				return nil, fmt.Errorf("flag %q is not allowed as first argument", args[0])
-			}
-		} else {
-			// First arg is a subcommand
-			if !llcliAllowedSubcmds[subcmd] {
-				return nil, fmt.Errorf("subcommand %q is not allowed", subcmd)
-			}
+		// If we found a subcommand or special flag, validate it
+		if subcmd != "" && !llcliAllowedSubcmds[subcmd] {
+			return nil, fmt.Errorf("subcommand %q is not allowed", subcmd)
 		}
 	}
 

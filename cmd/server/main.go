@@ -91,6 +91,12 @@ func (m *LinyapsManager) ExecuteCommand(command string, args []string) (string, 
 	return opID, nil
 }
 
+// Ping returns a simple response to verify the service is running.
+// This can be used to activate/start the service via D-Bus activation.
+func (m *LinyapsManager) Ping() (string, *dbus.Error) {
+	return "pong", nil
+}
+
 // Quit causes the server to exit gracefully. This is used for updates/restarts.
 func (m *LinyapsManager) Quit() *dbus.Error {
 	log.Printf("[INFO] Quit requested via D-Bus, shutting down")
