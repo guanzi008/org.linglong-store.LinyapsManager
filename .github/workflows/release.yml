@@ -71,6 +71,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: List release files
+        run: |
+          echo "Files to release:"
+          ls -lh release/
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
@@ -78,6 +85,4 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          files: |
-            release/**/linyaps-dbus-server-*
-            release/**/linyapsctl-*
+          files: release/*
