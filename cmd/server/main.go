@@ -91,6 +91,17 @@ func (m *LinyapsManager) ExecuteCommand(command string, args []string) (string, 
 	return opID, nil
 }
 
+// Quit causes the server to exit gracefully. This is used for updates/restarts.
+func (m *LinyapsManager) Quit() *dbus.Error {
+	log.Printf("[INFO] Quit requested via D-Bus, shutting down")
+	// Give D-Bus a moment to send the reply
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.Exit(0)
+	}()
+	return nil
+}
+
 // buildCommandEnv builds the environment for running commands.
 func buildCommandEnv(command string) []string {
 	env := os.Environ()
