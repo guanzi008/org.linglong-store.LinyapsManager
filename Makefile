@@ -74,9 +74,9 @@ release:
 		exit 2; \
 	fi
 	@echo "Building server with flags: -trimpath -ldflags '$(RELEASE_LDFLAGS)' -tags '$(RELEASE_TAGS)'"
-	@CGO_ENABLED=1 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(SERVER_BINARY)-$(GOOS)-$(GOARCH) $(CMD_SERVER)
+	@CGO_ENABLED=0 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(SERVER_BINARY)-$(GOOS)-$(GOARCH) $(CMD_SERVER)
 	@echo "Building client with flags: -trimpath -ldflags '$(RELEASE_LDFLAGS)' -tags '$(RELEASE_TAGS)'"
-	@CGO_ENABLED=1 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(CLIENT_BINARY)-$(GOOS)-$(GOARCH) $(CMD_CLIENT)
+	@CGO_ENABLED=0 $(GO) build $(GOMODFLAGS) -trimpath -ldflags "$(RELEASE_LDFLAGS)" -tags "$(RELEASE_TAGS)" $(GOFLAGS) -o $(OUTDIR)/$(CLIENT_BINARY)-$(GOOS)-$(GOARCH) $(CMD_CLIENT)
 	@echo "Build artifacts:"
 	@ls -lh $(OUTDIR)/$(SERVER_BINARY)-$(GOOS)-$(GOARCH) $(OUTDIR)/$(CLIENT_BINARY)-$(GOOS)-$(GOARCH) 2>/dev/null || true
 
