@@ -20,9 +20,9 @@ GOMODFLAGS ?= -mod=vendor
 TRIMPATH ?=
 # Strip debug info (-s) and DWARF (-w)
 LDFLAGS := -s -w
-# Release build flags for smaller binaries
-RELEASE_LDFLAGS := -s -w -buildmode=pie
-RELEASE_TAGS := osusergo,netgo
+# Release build flags (same as regular build for consistent hashes)
+RELEASE_LDFLAGS := -s -w
+RELEASE_TAGS :=
 
 # Default target
 all: server client symlinks
