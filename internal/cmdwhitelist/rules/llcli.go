@@ -2,6 +2,8 @@ package rules
 
 import (
 	"fmt"
+	"log"
+	"os/exec"
 	"strings"
 
 	"linyapsmanager/internal/cmdwhitelist"
@@ -83,6 +85,19 @@ func (r *llcliRule) Validate(args []string) ([]string, error) {
 		// If we found a subcommand or special flag, validate it
 		if subcmd != "" && !llcliAllowedSubcmds[subcmd] {
 			return nil, fmt.Errorf("subcommand %q is not allowed", subcmd)
+		}
+
+		// Special handling: kill the app before installing com.dongpl.linglong-store.v2
+		if subcmd == "install" && len(args) >= 2 && args[1] == "com.dongpl.linglong-store.v2" {
+			log.Printf("[INFO] Pre-killing com.dongpl.linglong-store.v2 before install")
+
+			// Execute: ll-cli kill -s 9 com.dongpl.linglong-store.v2
+			killCmd := exec.Command("ll-cli", "kill", "-s", "9", "com.dongpl.linglong-store.v2")
+			if output, err := killCmd.CombinedOutput(); err != nil {
+				log.Printf("[WARN] kill failed (app may not be running): %v, output: %s", err, string(output))
+			} else {
+				log.Printf("[INFO] kill succeeded: %s", string(output))
+			}
 		}
 	}
 
