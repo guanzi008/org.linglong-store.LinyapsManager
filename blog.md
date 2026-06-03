@@ -182,7 +182,182 @@ end note
 
 systemd 服务配置为 `Type=dbus`，当第一次 D-Bus 调用到达时，systemd 自动启动 Server 进程，Server 注册服务名后 systemd 标记服务就绪。后续调用直接复用已有的 Server。
 
-### 部署流程
+### systemd + D-Bus 按需唤醒详解
+
+这是整个方案最核心的部分——**Server 不需要常驻后台，而是由第一次 D-Bus 调用自动拉起来**。下面拆解这套机制是如何配置的。
+
+#### 为什么需要按需唤醒？
+
+玲珑包安装到用户系统后，Server 二进制被放到了用户目录下，但**用户安装玲珑包时没有任何手段让服务自动开机自启**——没有 root 权限，没有 systemd preset 机制，也没有安装后 hook。
+
+摆在面前的路只有一条：**容器内无法直接启动任何宿主机服务**——玲珑容器里不能执行宿主机命令。容器内唯一能做的就是往 home 目录写文件（因为玲珑的 home 目录容器内外是相通的）。
+
+所以唯一的办法就是：**在容器内把 D-Bus 激活配置写到 home 下，让第一次 D-Bus 调用从宿主机侧把服务拉起来**。用户装完包直接就能用，完全不需要（也不可能）在容器内手动启服务。
+
+#### 两个配置文件的作用
+
+按需唤醒需要配合两个文件：
+
+```
+~/.config/
+├── systemd/user/
+│   └── com.dongpl.linglong-store.v2.service   ← systemd 服务定义
+└── dbus-1/services/
+    └── org.linglong_store.LinyapsManager.service  ← D-Bus 激活配置
+```
+
+**D-Bus service 文件**（`org.linglong_store.LinyapsManager.service`）告诉 D-Bus：当有人请求 `org.linglong_store.LinyapsManager` 这个服务名但服务还没注册时，应该执行什么命令来启动它：
+
+```ini
+[D-BUS Service]
+Name=org.linglong_store.LinyapsManager
+Exec=/usr/bin/systemctl --user start com.dongpl.linglong-store.v2.service
+```
+
+- `Name` 必须是和 Server 要注册的 D-Bus 服务名完全一致
+- `Exec` 不是直接启动 Server，而是交给 systemd 管理。这样做的好处是 systemd 可以处理重启、依赖、状态查询等
+
+**systemd 服务文件**（`com.dongpl.linglong-store.v2.service`）定义 Server 如何运行：
+
+```ini
+[Unit]
+Description=LinyapsManager DBus Server
+
+[Service]
+Type=dbus
+BusName=org.linglong_store.LinyapsManager
+ExecStart=/home/user/.local/share/com.dongpl.linglong-store.v2/linyaps-dbus-server
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+其中最关键的一行是 **`Type=dbus`**。
+
+#### Type=dbus 的工作原理
+
+systemd 的 `Type=dbus` 是专为 D-Bus 服务设计的启动类型，它的行为和普通 `Type=simple` 有本质区别：
+
+```plantuml
+@startuml type_dbus
+title Type=dbus 启动流程
+
+participant "D-Bus Bus" as bus
+participant "systemd" as sd
+participant "Server\n(linyaps-dbus-server)" as srv
+participant "Client" as c
+
+note over bus, c : 第一次 D-Bus 调用
+
+c -> bus : 请求服务 org.linglong_store.LinyapsManager
+note right of bus
+  服务尚未注册
+  查找 .service 激活文件
+end note
+bus -> sd : Exec=systemctl --user start ...
+sd --> srv : fork + exec 启动进程
+
+note left of srv
+  Type=dbus 模式下，systemd
+  等待服务在 D-Bus 上注册
+  BusName 后，才认为启动成功
+end note
+
+srv -> bus : RequestName("org.linglong_store.LinyapsManager")
+bus --> sd : 服务名已注册
+sd --> srv : 标记服务状态 = active
+
+bus -> srv : 转发 ExecuteCommand 请求
+srv --> bus : 返回 operationID
+bus --> c : 返回 operationID
+
+note over bus, c : 后续调用 —— 服务已运行，直接转发
+
+c -> bus : 第二次 ExecuteCommand
+bus -> srv : 直接转发（不再触发激活）
+srv --> bus : 返回 operationID
+bus --> c : 返回 operationID
+
+@enduml
+```
+
+`Type=dbus` 的核心逻辑：
+
+1. systemd 启动 Server 进程后，**不会立即标记服务为 active**
+2. systemd 会监视 D-Bus，等待有进程注册 `BusName=` 指定的名字
+3. 一旦 Server 在代码中调用 `conn.RequestName("org.linglong_store.LinyapsManager")`，D-Bus 通知 systemd，systemd 标记服务启动成功
+4. 如果 Server 超时未注册服务名，systemd 会判定启动失败并触发 `Restart=on-failure`
+
+这保证了 D-Bus 调用方拿到的永远是一个已经就绪的服务——不会出现"systemd 说服务启动了，但 Server 还没注册 D-Bus 名字"的竞态。
+
+#### 对应的 Go 代码
+
+Server 端的关键启动代码：
+
+```go
+// 1. 连接 D-Bus
+conn := dbusutil.Connect("")
+
+// 2. 抢占服务名 —— 这一步会通知 systemd "服务已就绪"
+conn.RequestName(dbusconsts.BusName, dbus.NameFlagDoNotQueue)
+
+// NameFlagDoNotQueue 的含义：
+//   如果服务名已经被其他实例占用，直接报错而不是排队等待
+//   这防止了同一个服务被意外启动多个实例
+```
+
+`NameFlagDoNotQueue` 是一个安全机制——如果用户手动启动了一个 Server 实例，systemd 又尝试拉起第二个，第二个会因为这个名字已被占用而立即退出。
+
+#### 完整调用链路回顾
+
+```plantuml
+@startuml full_activation
+title 从 D-Bus 调用到命令执行的完整链路
+
+participant "容器内\n应用" as App
+participant "Client\n(ll-cli)" as Client
+participant "D-Bus\nSession Bus" as Bus
+participant "D-Bus\n.service 文件" as DService
+participant "systemd\n(Type=dbus)" as SD
+participant "Server" as Server
+participant "ll-cli\n(真实程序)" as Cmd
+
+App -> Client : ll-cli list
+Client -> Bus : 请求 BusName\norg.linglong_store.LinyapsManager
+
+alt 服务尚未注册
+  Bus -> DService : 查找 .service 文件
+  DService --> Bus : Exec=systemctl --user start ...
+  Bus -> SD : 启动 systemd 单元
+  SD --> Server : ExecStart 启动进程
+  Server -> Bus : RequestName(BusName)
+  Bus --> SD : 服务就绪
+end
+
+Bus -> Server : 转发 ExecuteCommand("ll-cli", ["list"])
+Server --> Bus : 返回 operationID
+Bus --> Client : 返回 operationID
+
+Server -> Cmd : fork exec ll-cli list
+
+loop 运行期间
+  Cmd --> Server : 逐行输出
+  Server -> Bus : Output 信号
+  Bus --> Client : 转发 Output
+  Client --> App : 显示输出
+end
+
+Cmd --> Server : exit 0
+Server -> Bus : Complete 信号
+Bus --> Client : 转发 Complete
+Client --> App : 退出码 0
+
+@enduml
+```
+
+#### 部署流程
 
 ```plantuml
 @startuml deploy_flow
