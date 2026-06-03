@@ -39,6 +39,7 @@ var llcliAllowedSubcmds = map[string]bool{
 	"info":      true,
 	"ps":        true,
 	"install":   true,
+	"upgrade":   true,
 	"uninstall": true,
 	"run":       true,
 	"kill":      true,

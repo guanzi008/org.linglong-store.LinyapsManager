@@ -64,6 +64,7 @@ func TestValidateCommand(t *testing.T) {
 		// Basic allowed commands
 		{"ll-cli list", "ll-cli", []string{"list"}, "ll-cli", false},
 		{"ll-cli install", "ll-cli", []string{"install", "com.example.app"}, "ll-cli", false},
+		{"ll-cli upgrade --json", "ll-cli", []string{"upgrade", "--json", "com.example.app"}, "ll-cli", false},
 		{"ll-cli version", "ll-cli", []string{"--version"}, "ll-cli", false},
 		{"ll-cli search", "ll-cli", []string{"search", "firefox"}, "ll-cli", false},
 		// Kill commands
